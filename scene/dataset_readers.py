@@ -418,17 +418,6 @@ def loadCamerasFromRawData(
         # ----------------------------------------------------
         w2c = np.linalg.inv(c2w)
 
-        # debug
-        # w2c = c2w
-        # w2c = np.linalg.inv(c2w)
-        # w2c[:3, 1:3] *= -1.0
-        # w2c = np.linalg.inv(c2w)       # world to camera
-
-        # R = w2c[:3, :3]                # no transpose
-        # T = w2c[:3, 3]
-
-
-
         # R stored transposed
         R = w2c[:3, :3].T
         T = w2c[:3, 3]
