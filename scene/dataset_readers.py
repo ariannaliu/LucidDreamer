@@ -368,6 +368,112 @@ def loadCamerasFromData(traindata, white_background):
             
     return cameras
 
+def loadCamerasFromRawData(
+    rgb_dir,
+    poses,           # an (N, 4, 4) array of camera-to-world transforms (c2w)
+    width,
+    height,
+    hfov_degrees=90.0,   # horizontal FOV
+    white_background=False
+):
+    """
+    Loads camera objects from raw data, producing a list of Camera objects
+    that match the R/T pipeline in generate_pcd and loadCamerasFromData.
+
+    :param rgb_dir: Directory of RGB images
+    :param poses: (N,4,4) array of camera-to-world transforms (c2w)
+    :param width: Image width
+    :param height: Image height
+    :param hfov_degrees: Horizontal field of view in degrees
+    :param white_background: Whether to composite white behind alpha
+    :return: A list of Camera objects
+    """
+    # 1. Collect images
+    rgb_files = sorted(f for f in os.listdir(rgb_dir)
+                       if f.lower().endswith('.png') or f.lower().endswith('.jpg'))
+    assert len(rgb_files) == len(poses), (
+        f"Mismatch: found {len(rgb_files)} images but {len(poses)} poses."
+    )
+
+    # 2. Derive FoVx and FoVy
+    fov = np.deg2rad(hfov_degrees)
+    # # focal length from HFOV: f = W / (2 * tan(HFOV/2))
+    # focal = width / (2.0 * np.tan(hfov / 2.0))
+    # # compute the vertical FOV from the focal and image height
+    # vfov = 2.0 * np.arctan(height / (2.0 * focal))
+    # vfov_degrees = np.rad2deg(vfov)
+    cameras = []
+
+    for idx, (rgb_file, c2w) in enumerate(zip(rgb_files, poses)):
+        # ----------------------------------------------------
+        # Step 1: c2w is the camera-to-world matrix from your data
+        # ----------------------------------------------------
+        c2w = np.array(c2w, dtype=np.float32)
+
+        # Flip Y and Z if your pipeline is consistent with the NeRF/Blender → COLMAP code
+        # c2w[:3, 1:3] *= -1.0  # just like in loadCamerasFromData
+
+        # ----------------------------------------------------
+        # Step 2: invert c2w to get w2c, then extract R, T
+        # ----------------------------------------------------
+        w2c = np.linalg.inv(c2w)
+
+        # debug
+        # w2c = c2w
+        # w2c = np.linalg.inv(c2w)
+        # w2c[:3, 1:3] *= -1.0
+        # w2c = np.linalg.inv(c2w)       # world to camera
+
+        # R = w2c[:3, :3]                # no transpose
+        # T = w2c[:3, 3]
+
+
+
+        # R stored transposed
+        R = w2c[:3, :3].T
+        T = w2c[:3, 3]
+
+        # ----------------------------------------------------
+        # Step 3: Load the image and handle alpha if needed
+        # ----------------------------------------------------
+        image_path = os.path.join(rgb_dir, rgb_file)
+        pil_image = Image.open(image_path).convert("RGBA")
+        pil_image = pil_image.resize((width, height), Image.BILINEAR)
+
+        # Convert to [H,W,4] in float [0..1]
+        im_data = np.array(pil_image).astype(np.float32) / 255.0
+
+        # Composite alpha if using white_background
+        bg_color = np.array([1, 1, 1], dtype=np.float32) if white_background else np.array([0, 0, 0], dtype=np.float32)
+        rgb_3 = im_data[..., :3]
+        alpha = im_data[..., 3:]
+        arr = rgb_3 * alpha + bg_color * (1.0 - alpha)
+
+        # convert to torch: [3, H, W]
+        image_tensor = torch.from_numpy(arr).permute(2, 0, 1)
+
+        # ----------------------------------------------------
+        # Step 4: Create the Camera object
+        # ----------------------------------------------------
+        FoVx = fov
+        FoVy = fov
+
+        cam = Camera(
+            colmap_id=idx,
+            R=R,
+            T=T,
+            FoVx=FoVx,
+            FoVy=FoVy,
+            image=image_tensor,       # or keep as CPU torch tensor
+            gt_alpha_mask=None,       # if you want a separate alpha mask
+            image_name=rgb_file,
+            uid=idx,
+            data_device='cuda'        # or 'cpu', depends on your usage
+        )
+
+        cameras.append(cam)
+
+    return cameras
 
 def loadCameraPreset(traindata, presetdata):
     cam_infos = {}

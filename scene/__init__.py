@@ -8,8 +8,9 @@ import random
 
 from arguments import GSParams
 from utils.system import searchForMaxIteration
-from scene.dataset_readers import readDataInfo
+from scene.dataset_readers import readDataInfo,loadCamerasFromRawData
 from scene.gaussian_model import GaussianModel
+from utils.graphics import BasicPointCloud
 
 
 class Scene:
@@ -39,3 +40,19 @@ class Scene:
     def getPresetCameras(self, preset):
         assert preset in self.preset_cameras
         return self.preset_cameras[preset]
+    
+class Scene_zx:
+    gaussians: GaussianModel
+
+    def __init__(self, all_points, all_colors, rgb_dir, poses, width, height, gaussians: GaussianModel, opt: GSParams):
+        self.gaussians = gaussians
+        self.cameras_extent = 0.001
+        self.point_cloud = BasicPointCloud(points=all_points, colors=all_colors, normals=None)
+
+        self.train_cameras = loadCamerasFromRawData(rgb_dir, poses, width, height, white_background=opt.white_background)
+
+        self.gaussians.create_from_pcd(self.point_cloud, self.cameras_extent)
+        self.gaussians.training_setup(opt)
+
+    def getTrainCameras(self):
+        return self.train_cameras

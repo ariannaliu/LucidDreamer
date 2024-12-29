@@ -39,7 +39,7 @@ from diffusers import (
 
 from arguments import GSParams, CameraParams
 from gaussian_renderer import render
-from scene import Scene, GaussianModel
+from scene import Scene, GaussianModel, Scene_zx
 from scene.dataset_readers import loadCameraPreset
 from utils.loss import l1_loss, ssim
 from utils.camera import load_json
@@ -191,6 +191,15 @@ class LucidDreamer:
             if not os.path.exists(self.save_dir):
                 os.makedirs(self.save_dir)
             outfile = self.save_ply(os.path.join(self.save_dir, 'gsplat.ply'))
+        return outfile
+    
+    def create_zx(self, all_points, all_colors, rgb_dir, poses, width, height):
+        self.scene = Scene_zx(all_points, all_colors, rgb_dir, poses, width, height, self.gaussians, self.opt)
+        self.training()
+        self.timestamp = datetime.datetime.now().strftime('%y%m%d_%H%M%S')
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
+        outfile = self.save_ply(os.path.join(self.save_dir, 'gsplat_zx.ply'))
         return outfile
     
     def save_ply(self, fpath=None):
@@ -505,7 +514,9 @@ class LucidDreamer:
         }
 
         # render_poses = get_pcdGenPoses(pcdgenpath)
-        internel_render_poses = get_pcdGenPoses('hemisphere', {'center_depth': center_depth})
+        # internel_render_poses = get_pcdGenPoses('hemisphere', {'center_depth': center_depth})
+        internel_render_poses = np.zeros((1, 3, 4), dtype=np.float32)
+        internel_render_poses[0,:3,:3] = np.eye(3)
 
         if self.for_gradio:
             progress(0, desc='[2/4] Aligning...')

@@ -9,12 +9,12 @@ if __name__ == "__main__":
     ### option
     parser = argparse.ArgumentParser(description='Arguments for LucidDreamer')
     # Input options
-    parser.add_argument('--image', '-img', type=str, default='examples/Image015_animelakehouse.jpg', help='Input image for scene generation')
-    parser.add_argument('--text', '-t', type=str, default='examples/Image015_animelakehouse.txt', help='Text prompt for scene generation')
+    parser.add_argument('--image', '-img', type=str, default='example_zhixuan/sd14_livingroom.png', help='Input image for scene generation')
+    parser.add_argument('--text', '-t', type=str, default='example_zhixuan/text.txt', help='Text prompt for scene generation')
     parser.add_argument('--neg_text', '-nt', type=str, default='', help='Negative text prompt for scene generation')
 
     # Camera options
-    parser.add_argument('--campath_gen', '-cg', type=str, default='lookdown', choices=['lookdown', 'lookaround', 'rotate360'], help='Camera extrinsic trajectories for scene generation')
+    parser.add_argument('--campath_gen', '-cg', type=str, default='lookaround', choices=['lookdown', 'lookaround', 'rotate360'], help='Camera extrinsic trajectories for scene generation')
     parser.add_argument('--campath_render', '-cr', type=str, default='llff', choices=['back_and_forth', 'llff', 'headbanging'], help='Camera extrinsic trajectories for video rendering')
 
     # Inpainting options
