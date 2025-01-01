@@ -5,7 +5,7 @@ import open3d as o3d
 from scipy.spatial.transform import Rotation as R
 
 
-def create_pcd_from_raw_data(rgb_dir, depth_dir, height, width, xyz_path, rotation_path):
+def create_pcd_from_raw_data(rgb_dir, depth_dir, height, width, xyz_path, rotation_path,save_dir):
     # Camera intrinsics (example)
     hfov = float(90) * np.pi / 180.
     focal_length = width / (2 * np.tan(hfov / 2))
@@ -118,7 +118,8 @@ def create_pcd_from_raw_data(rgb_dir, depth_dir, height, width, xyz_path, rotati
     pcd.points = o3d.utility.Vector3dVector(all_points)
     pcd.colors = o3d.utility.Vector3dVector(all_colors)
 
-    output_path = "./example_zhixuan/mp3d_gendata1/output_pointcloud.ply"
+    # output_path = "./output_pointcloud.ply"
+    output_path = os.path.join(save_dir, "output_pointcloud.ply")
     o3d.io.write_point_cloud(output_path, pcd)
     print(f"Point cloud saved to {output_path}")
     return all_points, all_colors, poses
@@ -202,83 +203,83 @@ def depth_to_pointcloud(depth, K):
     points = np.stack([X, Y, Z], axis=1)  # Nx3
     return points
 
-# --------------------------------------------
-# Aggregate point cloud from all frames
-# --------------------------------------------
-all_points = []
-all_colors = []
+# # --------------------------------------------
+# # Aggregate point cloud from all frames
+# # --------------------------------------------
+# all_points = []
+# all_colors = []
 
-# Get sorted image file lists
-# --------------------------------------------
-# Modification: Changed depth file extension to .npy
-# --------------------------------------------
-rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith('.png') or f.endswith('.jpg')])
-depth_files = sorted([f for f in os.listdir(depth_dir) if f.endswith('.npy')])
+# # Get sorted image file lists
+# # --------------------------------------------
+# # Modification: Changed depth file extension to .npy
+# # --------------------------------------------
+# rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith('.png') or f.endswith('.jpg')])
+# depth_files = sorted([f for f in os.listdir(depth_dir) if f.endswith('.npy')])
 
-# Check that we have the same number of RGB and depth frames and matches the pose count
-assert len(rgb_files) == len(depth_files) == poses.shape[0], "Mismatch in number of RGB, depth frames, and poses."
+# # Check that we have the same number of RGB and depth frames and matches the pose count
+# assert len(rgb_files) == len(depth_files) == poses.shape[0], "Mismatch in number of RGB, depth frames, and poses."
 
-print(f"Found {len(rgb_files)} RGB and depth frames.")
+# print(f"Found {len(rgb_files)} RGB and depth frames.")
 
-for i, (rgb_file, depth_file) in enumerate(zip(rgb_files, depth_files)):
-    print(f"Processing frame {i + 1}/{len(rgb_files)}: RGB={rgb_file}, Depth={depth_file}")
+# for i, (rgb_file, depth_file) in enumerate(zip(rgb_files, depth_files)):
+#     print(f"Processing frame {i + 1}/{len(rgb_files)}: RGB={rgb_file}, Depth={depth_file}")
     
-    # Load RGB image
-    rgb_path = os.path.join(rgb_dir, rgb_file)
-    # rgb = np.array(Image.open(rgb_path))  # HxWx3, uint8
-    rgb_image = Image.open(rgb_path).resize((width, height), Image.BILINEAR)  # Modification 2: Resize
-    rgb = np.array(rgb_image)  # HxWx3, uint8
+#     # Load RGB image
+#     rgb_path = os.path.join(rgb_dir, rgb_file)
+#     # rgb = np.array(Image.open(rgb_path))  # HxWx3, uint8
+#     rgb_image = Image.open(rgb_path).resize((width, height), Image.BILINEAR)  # Modification 2: Resize
+#     rgb = np.array(rgb_image)  # HxWx3, uint8
 
-    if rgb.ndim == 3 and rgb.shape[2] == 4:
-        rgb = rgb[:, :, :3]
+#     if rgb.ndim == 3 and rgb.shape[2] == 4:
+#         rgb = rgb[:, :, :3]
     
-    # Load Depth from .npy file
-    depth_path = os.path.join(depth_dir, depth_file)
-    depth = np.load(depth_path).astype(np.float32)  # Shape: (512, 512)
+#     # Load Depth from .npy file
+#     depth_path = os.path.join(depth_dir, depth_file)
+#     depth = np.load(depth_path).astype(np.float32)  # Shape: (512, 512)
     
-    # Ensure depth shape matches expected dimensions
-    assert depth.shape == (height, width), f"Depth shape mismatch: expected ({height}, {width}), got {depth.shape}"
+#     # Ensure depth shape matches expected dimensions
+#     assert depth.shape == (height, width), f"Depth shape mismatch: expected ({height}, {width}), got {depth.shape}"
     
-    # Convert depth to camera space points
-    cam_points = depth_to_pointcloud(depth, K)  # Nx3
+#     # Convert depth to camera space points
+#     cam_points = depth_to_pointcloud(depth, K)  # Nx3
     
-    # Get corresponding colors
-    # --------------------------------------------
-    # Modification: Changed how valid indices are computed to match .npy depth loading
-    # --------------------------------------------
-    valid_indices = np.where(depth.reshape(-1) > 0)[0]
-    y_idx, x_idx = np.divmod(valid_indices, width)
-    point_colors = rgb[y_idx, x_idx] / 255.0  # Nx3, normalized
+#     # Get corresponding colors
+#     # --------------------------------------------
+#     # Modification: Changed how valid indices are computed to match .npy depth loading
+#     # --------------------------------------------
+#     valid_indices = np.where(depth.reshape(-1) > 0)[0]
+#     y_idx, x_idx = np.divmod(valid_indices, width)
+#     point_colors = rgb[y_idx, x_idx] / 255.0  # Nx3, normalized
     
-    # Load camera pose (camera-to-world)
-    cam_to_world = poses[i]  # 4x4 matrix
+#     # Load camera pose (camera-to-world)
+#     cam_to_world = poses[i]  # 4x4 matrix
     
-    # Convert points to homogeneous coordinates
-    ones = np.ones((cam_points.shape[0], 1), dtype=np.float32)
-    cam_points_h = np.concatenate([cam_points, ones], axis=1)  # Nx4
+#     # Convert points to homogeneous coordinates
+#     ones = np.ones((cam_points.shape[0], 1), dtype=np.float32)
+#     cam_points_h = np.concatenate([cam_points, ones], axis=1)  # Nx4
     
-    # Transform to world coordinates
-    world_points_h = (cam_to_world @ cam_points_h.T).T  # Nx4
-    world_points = world_points_h[:, :3] / world_points_h[:, 3:4]  # Nx3
+#     # Transform to world coordinates
+#     world_points_h = (cam_to_world @ cam_points_h.T).T  # Nx4
+#     world_points = world_points_h[:, :3] / world_points_h[:, 3:4]  # Nx3
     
-    # Append to all points and colors
-    all_points.append(world_points)
-    all_colors.append(point_colors)
+#     # Append to all points and colors
+#     all_points.append(world_points)
+#     all_colors.append(point_colors)
 
-# Concatenate all points and colors
-all_points = np.concatenate(all_points, axis=0)
-all_colors = np.concatenate(all_colors, axis=0)
+# # Concatenate all points and colors
+# all_points = np.concatenate(all_points, axis=0)
+# all_colors = np.concatenate(all_colors, axis=0)
 
-print(f"Total points aggregated: {all_points.shape[0]}")
+# print(f"Total points aggregated: {all_points.shape[0]}")
 
-# --------------------------------------------
-# Create Open3D point cloud and save
-# --------------------------------------------
-pcd = o3d.geometry.PointCloud()
-pcd.points = o3d.utility.Vector3dVector(all_points)
-pcd.colors = o3d.utility.Vector3dVector(all_colors)
+# # --------------------------------------------
+# # Create Open3D point cloud and save
+# # --------------------------------------------
+# pcd = o3d.geometry.PointCloud()
+# pcd.points = o3d.utility.Vector3dVector(all_points)
+# pcd.colors = o3d.utility.Vector3dVector(all_colors)
 
-# Save the point cloud to a file
-output_path = "./example_zhixuan/mp3d_gendata1/output_pointcloud.ply"
-o3d.io.write_point_cloud(output_path, pcd)
-print(f"Point cloud saved to {output_path}")
+# # Save the point cloud to a file
+# output_path = "./example_zhixuan/mp3d_gendata1/output_pointcloud.ply"
+# o3d.io.write_point_cloud(output_path, pcd)
+# print(f"Point cloud saved to {output_path}")
