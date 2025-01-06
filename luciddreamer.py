@@ -41,7 +41,7 @@ from arguments import GSParams, CameraParams
 from gaussian_renderer import render
 from scene import Scene, GaussianModel, Scene_zx
 from scene.dataset_readers import loadCameraPreset
-from utils.loss import l1_loss, ssim, PerceptualLoss
+from utils.loss import l1_loss, ssim
 from utils.camera import load_json
 from utils.depth import colorize
 from utils.lama import LaMa
@@ -289,9 +289,6 @@ class LucidDreamer:
         else:
             iterable_gauss = range(1, self.opt.iterations + 1)
         
-        # initial perceptual loss
-        perceptual_loss = PerceptualLoss(device='cuda')
-
         for iteration in iterable_gauss:
             self.gaussians.update_learning_rate(iteration)
 
@@ -311,25 +308,11 @@ class LucidDreamer:
                 render_pkg['render'], render_pkg['viewspace_points'], render_pkg['visibility_filter'], render_pkg['radii'])
             
             # image is shape (3, 512, 512) => to feed into VGG, reshape to (1, 3, 512, 512)
-            image = image.unsqueeze(0)
-
+            image = Image
             # Loss
-            gt_image = viewpoint_cam.original_image.cuda().unsqueeze(0)
-            post_image = viewpoint_cam.post_image.cuda().unsqueeze(0)
-            # Ll1 = l1_loss(image, gt_image)
-            # loss = (1.0 - self.opt.lambda_dssim) * Ll1 + self.opt.lambda_dssim * (1.0 - ssim(image, gt_image))
-
-            pp_loss, _ = perceptual_loss(image, gt_image)
-            _, style_loss = perceptual_loss(image, post_image)
-
-            style_loss = style_loss.detach()
-            loss =  pp_loss + 100 * style_loss
-
-            if iteration % 500 == 0:
-                continue
-
-            if iteration >2000:
-                break      
+            gt_image = viewpoint_cam.original_image.cuda()
+            Ll1 = l1_loss(image, gt_image)
+            loss = (1.0 - self.opt.lambda_dssim) * Ll1 + self.opt.lambda_dssim * (1.0 - ssim(image, gt_image))
 
             loss.backward()
 
