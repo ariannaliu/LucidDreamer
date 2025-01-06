@@ -97,3 +97,76 @@ def nearMean_map(array, mask, kernelsize=3):
     nearMean_map = (nearMean_map / (cnt_map+1e-8)).squeeze()
         
     return nearMean_map
+
+
+from torchvision import models
+from torch import Tensor
+from typing import List
+
+class PerceptualLoss(torch.nn.Module):
+
+    def __init__(self, model='vgg16', device: torch.device=None, weigths=None) -> None:
+        super(PerceptualLoss, self).__init__()
+
+        assert model.startswith('vgg'), f"Use vgg model."
+        self._vgg = getattr(models, model)(pretrained=True)
+        if device is not None:
+            self._vgg = self._vgg.to(device)
+        self.layers = [4, 9, 16, 23]
+        self.weights = weigths if weigths is not None else [1] * len(self.layers)
+        self.loss_network = self._vgg.features[:self.layers[-1] + 1].eval()
+        for param in self.parameters():
+            param.requires_grad = False
+
+        self.criterion = torch.nn.L1Loss()
+
+    def _extract_features(self, x: Tensor) -> List[Tensor]:
+        x_vgg = []
+        for layer in self.loss_network:
+            x = layer(x)
+            x_vgg.append(x)
+        return x_vgg
+
+    def _gram_mat(self, x: Tensor):
+        n, c, h, w = x.shape
+        features = x.reshape(n, c, h * w)
+        features = features / torch.norm(features, dim=1, keepdim=True) / (h * w) ** 0.5
+        features_t = features.transpose(1, 2)
+        gram = features.bmm(features_t)
+        return gram
+
+    def to(self, device: torch.device = None, dtype: torch.dtype = None):
+        if device is not None:
+            assert isinstance(device, torch.device)
+            self._vgg.to(device)
+            self.loss_network.to(device)
+        if dtype is not None:
+            assert isinstance(dtype, torch.dtype)
+            self._vgg.to(dtype)
+            self.loss_network.to(dtype)
+        return self
+
+    @property
+    def dtype(self):
+        return list(self._vgg.parameters())[0].dtype
+
+    def forward(self, out_images: Tensor, target_images: Tensor) -> Tensor:
+        out_images = out_images.to(self.dtype)
+        target_images = target_images.to(self.dtype)
+
+        input_features, target_features = self._extract_features(out_images), \
+                                          self._extract_features(target_images)
+        percep_loss = 0
+        for weight, layer in zip(self.weights, self.layers):
+            loss = weight * self.criterion(input_features[layer].float(), target_features[layer].float())
+            # loss = weight * self.criterion(self._gram_mat(input_features[layer]).float(), self._gram_mat(target_features[layer]).float())
+            if not (torch.isnan(loss) or torch.isinf(loss)):
+                percep_loss += loss
+
+        style_loss = 0
+        for weight, layer in zip(self.weights, self.layers):
+            loss = weight * self.criterion(self._gram_mat(input_features[layer]).float(), self._gram_mat(target_features[layer]).float())
+            if not (torch.isnan(loss) or torch.isinf(loss)):
+                style_loss += loss
+
+        return percep_loss, style_loss

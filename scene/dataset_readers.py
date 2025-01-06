@@ -21,7 +21,7 @@ from PIL import Image
 from plyfile import PlyData, PlyElement
 
 from scene.gaussian_model import BasicPointCloud
-from scene.cameras import MiniCam, Camera
+from scene.cameras import MiniCam, Camera, Camera_zx
 from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec2rotmat, \
     read_extrinsics_binary, read_intrinsics_binary, read_points3D_binary, read_points3D_text
 from utils.graphics import getWorld2View2, focal2fov, fov2focal
@@ -370,6 +370,7 @@ def loadCamerasFromData(traindata, white_background):
 
 def loadCamerasFromRawData(
     rgb_dir,
+    post_rgb_dir,
     poses,           # an (N, 4, 4) array of camera-to-world transforms (c2w)
     width,
     height,
@@ -381,6 +382,7 @@ def loadCamerasFromRawData(
     that match the R/T pipeline in generate_pcd and loadCamerasFromData.
 
     :param rgb_dir: Directory of RGB images
+    :param post_rgb_dir: Directory of post-processed RGB images, for vgg loss
     :param poses: (N,4,4) array of camera-to-world transforms (c2w)
     :param width: Image width
     :param height: Image height
@@ -393,6 +395,11 @@ def loadCamerasFromRawData(
                        if f.lower().endswith('.png') or f.lower().endswith('.jpg'))
     assert len(rgb_files) == len(poses), (
         f"Mismatch: found {len(rgb_files)} images but {len(poses)} poses."
+    )
+    post_rgb_files = sorted(f for f in os.listdir(post_rgb_dir)
+                            if f.lower().endswith('.png') or f.lower().endswith('.jpg'))
+    assert len(post_rgb_files) == len(poses), (
+        f"Mismatch: found {len(post_rgb_files)} images but {len(poses)} poses."
     )
 
     # 2. Derive FoVx and FoVy
@@ -442,18 +449,37 @@ def loadCamerasFromRawData(
         image_tensor = torch.from_numpy(arr).permute(2, 0, 1)
 
         # ----------------------------------------------------
+        # Step 3.5: Load the post-processed image for VGG loss
+        # ----------------------------------------------------
+        post_rgb_path = os.path.join(post_rgb_dir, post_rgb_files[idx])
+        post_pil_image = Image.open(post_rgb_path).convert("RGBA")
+        post_pil_image = post_pil_image.resize((width, height), Image.BILINEAR)
+
+        # Convert to [H,W,4] in float [0..1]
+        post_im_data = np.array(post_pil_image).astype(np.float32) / 255.0
+
+        # Composite alpha if using white_background
+        post_rgb_3 = post_im_data[..., :3]
+        post_alpha = post_im_data[..., 3:]
+        post_arr = post_rgb_3 * post_alpha + bg_color * (1.0 - post_alpha)
+
+        # convert to torch: [3, H, W]
+        post_image_tensor = torch.from_numpy(post_arr).permute(2, 0, 1)
+
+        # ----------------------------------------------------
         # Step 4: Create the Camera object
         # ----------------------------------------------------
         FoVx = fov
         FoVy = fov
 
-        cam = Camera(
+        cam = Camera_zx(
             colmap_id=idx,
             R=R,
             T=T,
             FoVx=FoVx,
             FoVy=FoVy,
             image=image_tensor,       # or keep as CPU torch tensor
+            post_image=post_image_tensor,
             gt_alpha_mask=None,       # if you want a separate alpha mask
             image_name=rgb_file,
             uid=idx,
